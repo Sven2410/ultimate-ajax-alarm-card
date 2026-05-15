@@ -2,13 +2,12 @@
  * Ultimate Ajax Systems Alarm Card
  * Author: Sven2410
  * https://github.com/Sven2410/ultimate-ajax-alarm-card
- * License: MIT — v1.2.0
+ * License: MIT — v1.3.0
  */
 
-const CARD_VERSION = '1.2.0';
+const CARD_VERSION = '1.3.0';
 
-// ─── State config ────────────────────────────────────────────────────────────
-// Green is slightly lighter: #26D65B instead of #00C853
+// ─── State config ─────────────────────────────────────────────────────────────
 const STATE_CONFIG = {
   disarmed: {
     label: 'Uitgeschakeld',
@@ -75,64 +74,72 @@ const STATE_CONFIG = {
   },
 };
 
-// ─── SVG helpers ─────────────────────────────────────────────────────────────
-// All arcs: center (cx,cy), radius r, gap on the LEFT side.
-// We draw from ~240° to ~120° clockwise — that's a ~240° arc passing through
-// the top, right and bottom, leaving a gap at 9 o'clock (left).
+// ─── Arc helper ───────────────────────────────────────────────────────────────
+// Draws a ~240° arc with the gap on the specified side.
+// side: 'left'  → gap at 180° (9 o'clock)
+//       'right' → gap at   0° (3 o'clock)
 //
-// Point at angle θ (degrees, SVG convention: 0°=right, 90°=down):
-//   x = cx + r*cos(θ·π/180)
-//   y = cy + r*sin(θ·π/180)
-//
-// Status icons use viewBox="0 0 80 80", center=40,40
-// Button icons use viewBox="0 0 56 56", center=28,28
+// Math (SVG: 0°=right, 90°=down):
+//   left  gap: arc from 240° to 120°  clockwise (large, sweep=1)
+//   right gap: arc from  60° to 300°  clockwise (large, sweep=1)
+//              equivalent to mirroring the left arc horizontally
 
-// Rounded arc-start/end at ±120° from the left (180°):
-//   start = 240° (upper-left)
-//   end   = 120° (lower-left)
-// Large arc + clockwise → sweep=1, large=1
-
-function arcPath(cx, cy, r) {
-  // 240° → upper-left gap corner
-  const sx = cx + r * Math.cos(240 * Math.PI / 180);
-  const sy = cy + r * Math.sin(240 * Math.PI / 180);
-  // 120° → lower-left gap corner
-  const ex = cx + r * Math.cos(120 * Math.PI / 180);
-  const ey = cy + r * Math.sin(120 * Math.PI / 180);
-  // Format to 2 decimals
+function arcPath(cx, cy, r, side = 'left') {
   const f = n => Math.round(n * 100) / 100;
+  const rad = d => d * Math.PI / 180;
+
+  let startDeg, endDeg;
+  if (side === 'left') {
+    startDeg = 240; endDeg = 120;   // gap left
+  } else {
+    startDeg = 300; endDeg = 60;    // gap right  (mirror of left)
+    // But going from 300° to 60° clockwise is only 120°, we need the long arc.
+    // Swap to: from 60° to 300° counterclockwise = large arc sweep=0
+    // Easier: just mirror with SVG transform (see ICONS below).
+    startDeg = 240; endDeg = 120;   // will be mirrored via SVG transform
+  }
+
+  const sx = cx + r * Math.cos(rad(startDeg));
+  const sy = cy + r * Math.sin(rad(startDeg));
+  const ex = cx + r * Math.cos(rad(endDeg));
+  const ey = cy + r * Math.sin(rad(endDeg));
   return `M ${f(sx)} ${f(sy)} A ${r} ${r} 0 1 1 ${f(ex)} ${f(ey)}`;
 }
 
+// ─── Icons ────────────────────────────────────────────────────────────────────
 const ICONS = {
-  // ── Status: Uitgeschakeld — ~240° open arc, gap LEFT
+
+  // Status: Uitgeschakeld — ~240° open arc, gap LEFT
   status_disarmed: `<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="${arcPath(40,40,26)}" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/>
   </svg>`,
 
-  // ── Status: Ingeschakeld — full ring
+  // Status: Ingeschakeld — full ring
   status_armed: `<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
     <circle cx="40" cy="40" r="26" stroke="currentColor" stroke-width="4.5"/>
   </svg>`,
 
-  // ── Status: Deelinschakeling — outer full ring + inner open arc, gap LEFT
+  // Status: Deelinschakeling — full outer ring + open inner arc gap LEFT
   status_night: `<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
     <circle cx="40" cy="40" r="26" stroke="currentColor" stroke-width="4.5"/>
     <path d="${arcPath(40,40,13)}" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/>
   </svg>`,
 
-  // ── Button: Inschakelen — open arc gap LEFT (same style as status disarmed)
+  // Button: Inschakelen — FULL RING (no gap)
   btn_arm: `<svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="${arcPath(28,28,19)}" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+    <circle cx="28" cy="28" r="19" stroke="currentColor" stroke-width="3.5"/>
   </svg>`,
 
-  // ── Button: Uitschakelen — undo arc, gap at top-right (Ajax style)
-  // This one is intentionally different: ~200° arc opening at top-right
+  // Button: Uitschakelen — open arc gap LEFT, then mirrored 180° horizontally
+  // The mirror is: scale(-1,1) translate(-56,0) which flips the x-axis around the center.
+  // Result: same arc shape but gap is now on the RIGHT side.
   btn_disarm: `<svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M 43 17 A 19 19 0 1 0 43 39" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+    <g transform="translate(56,0) scale(-1,1)">
+      <path d="${arcPath(28,28,19)}" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+    </g>
   </svg>`,
 
-  // ── Button: Deelinschakeling — outer full ring + inner open arc, gap LEFT
+  // Button: Deelinschakeling — full outer ring + open inner arc gap LEFT
   btn_night: `<svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
     <circle cx="28" cy="28" r="19" stroke="currentColor" stroke-width="3.5"/>
     <path d="${arcPath(28,28,10)}" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
@@ -194,32 +201,53 @@ class UltimateAjaxAlarmCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this._hass   = null;
-    this._config = null;
-    this._state  = null;  // last rendered state string
+    this._hass        = null;
+    this._config      = null;
+    this._state       = null;
+    this._pollTimer   = null;   // interval timer for Ajax→HA state polling
   }
 
   static getConfigElement() { return document.createElement('ultimate-ajax-alarm-card-editor'); }
-  static getStubConfig()    { return { entity:'alarm_control_panel.home', name:'', code:false }; }
+  static getStubConfig()    { return { entity:'alarm_control_panel.home', name:'', code:false, poll_interval:10 }; }
+
+  // Called by HA when the card is removed from the DOM — clean up the poll timer
+  disconnectedCallback() {
+    this._stopPoll();
+  }
 
   setConfig(config) {
     if (!config.entity)
       throw new Error('Definieer een alarm_control_panel entity');
     if (!config.entity.startsWith('alarm_control_panel.'))
       throw new Error('Entity moet beginnen met alarm_control_panel.');
-    this._config = { entity:config.entity, name:config.name||'', code:config.code||false };
-    // Re-render immediately in case hass is already set
-    if (this._hass) this._syncAndRender();
-    else this._render('unavailable');
+
+    this._config = {
+      entity:        config.entity,
+      name:          config.name          || '',
+      code:          config.code          || false,
+      // poll_interval: seconds between forced state refreshes (default 10s).
+      // This ensures Ajax app→HA changes are picked up even if the HA push is delayed.
+      // Set to 0 to disable polling.
+      poll_interval: config.poll_interval !== undefined ? Number(config.poll_interval) : 10,
+    };
+
+    if (this._hass) {
+      this._syncAndRender();
+    } else {
+      this._render('unavailable');
+    }
+
+    this._restartPoll();
   }
 
-  // ── HA pushes state changes here — covers both UI-triggered and Ajax-triggered changes ──
+  // ── HA pushes every state update here ─────────────────────────────────────
+  // Covers: button press in this card, button press in other HA dashboards,
+  //         automations, AND changes received from the Ajax integration.
   set hass(hass) {
     this._hass = hass;
     if (!this._config) return;
     const obj   = hass.states[this._config.entity];
     const state = obj ? obj.state : 'unavailable';
-    // Always update — re-render on ANY state change regardless of origin
     if (state !== this._state) {
       this._state = state;
       this._render(state);
@@ -228,6 +256,34 @@ class UltimateAjaxAlarmCard extends HTMLElement {
 
   getCardSize() { return 5; }
 
+  // ── Polling: periodically fetch the entity state directly via the HA REST API.
+  // This is a safety net for Ajax integrations that use polling themselves and
+  // may not always trigger a HA WebSocket push in time.
+  _restartPoll() {
+    this._stopPoll();
+    const interval = this._config?.poll_interval || 0;
+    if (interval <= 0) return;
+    this._pollTimer = setInterval(() => this._pollState(), interval * 1000);
+  }
+
+  _stopPoll() {
+    if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+  }
+
+  async _pollState() {
+    if (!this._hass || !this._config) return;
+    try {
+      // callApi sends an authenticated request to the HA REST API
+      const result = await this._hass.callApi('GET', `states/${this._config.entity}`);
+      if (result && result.state && result.state !== this._state) {
+        this._state = result.state;
+        this._render(result.state);
+      }
+    } catch (e) {
+      // Silently ignore poll errors (network hiccup, etc.)
+    }
+  }
+
   _syncAndRender() {
     const obj   = this._hass.states[this._config.entity];
     const state = obj ? obj.state : 'unavailable';
@@ -235,9 +291,7 @@ class UltimateAjaxAlarmCard extends HTMLElement {
     this._render(state);
   }
 
-  _sc(state) {
-    return STATE_CONFIG[state] || STATE_CONFIG.unavailable;
-  }
+  _sc(state) { return STATE_CONFIG[state] || STATE_CONFIG.unavailable; }
 
   _name() {
     if (this._config.name) return this._config.name;
@@ -267,7 +321,6 @@ class UltimateAjaxAlarmCard extends HTMLElement {
           -webkit-font-smoothing: antialiased;
         }
 
-        /* ha-card transparent — card-mod handles border-radius/shadow/backdrop */
         ha-card {
           background: transparent !important;
           border: none !important;
@@ -276,16 +329,13 @@ class UltimateAjaxAlarmCard extends HTMLElement {
           overflow: hidden;
         }
 
-        /* ── Inner wrapper — solid black fill ─────────── */
         .inner {
           background: #000;
           display: flex;
           flex-direction: column;
         }
 
-        /* ════════════════════════════════════════════
-           STATUS BLOCK
-        ════════════════════════════════════════════ */
+        /* ════════ STATUS BLOCK ════════ */
         .status-block {
           display: flex;
           flex-direction: column;
@@ -293,7 +343,6 @@ class UltimateAjaxAlarmCard extends HTMLElement {
           justify-content: center;
           padding: 52px 24px 44px;
         }
-        /* Night mode: white border */
         .status-block.night {
           margin: 14px 14px 0;
           border: 1.5px solid rgba(255,255,255,.20);
@@ -308,7 +357,7 @@ class UltimateAjaxAlarmCard extends HTMLElement {
           filter: drop-shadow(0 0 18px ${sc.shadow});
           margin-bottom: 20px;
           flex-shrink: 0;
-          transition: color .35s ease, filter .35s ease;
+          transition: color .35s, filter .35s;
         }
         .status-icon.pulse { animation: s-pulse 1.5s ease-in-out infinite; }
         .status-icon.blink { animation: s-blink .55s ease-in-out infinite; }
@@ -338,10 +387,7 @@ class UltimateAjaxAlarmCard extends HTMLElement {
           transition: color .35s;
         }
 
-        /* ════════════════════════════════════════════
-           CONTROL GRID
-           2 columns, top row + full-width bottom row
-        ════════════════════════════════════════════ */
+        /* ════════ CONTROL GRID ════════ */
         .grid {
           background: #1C1C1E;
           display: grid;
@@ -350,7 +396,6 @@ class UltimateAjaxAlarmCard extends HTMLElement {
           ${night ? 'margin-top: 14px;' : ''}
         }
 
-        /* ── Button cell ──────────────────────────── */
         .btn {
           position: relative;
           display: flex;
@@ -359,14 +404,12 @@ class UltimateAjaxAlarmCard extends HTMLElement {
           justify-content: center;
           min-height: 110px;
           padding: 14px 16px;
+          gap: 8px;
           cursor: pointer;
           background: transparent;
           border: none;
           -webkit-tap-highlight-color: transparent;
-          gap: 8px;       /* space between label and icon */
         }
-
-        /* Press feedback */
         .btn::after {
           content: '';
           position: absolute;
@@ -377,13 +420,11 @@ class UltimateAjaxAlarmCard extends HTMLElement {
         }
         .btn:active::after { background: rgba(255,255,255,.08); }
 
-        /* Divider lines */
         .btn.tl { border-right:  1px solid rgba(255,255,255,.09);
                   border-bottom: 1px solid rgba(255,255,255,.09); }
         .btn.tr { border-bottom: 1px solid rgba(255,255,255,.09); }
         .btn.bc { grid-column: 1 / -1; }
 
-        /* ── Label — centered, ABOVE icon (top row) or BELOW icon (bottom row) ── */
         .lbl {
           font-size: 13px;
           font-weight: 400;
@@ -391,10 +432,8 @@ class UltimateAjaxAlarmCard extends HTMLElement {
           text-align: center;
           white-space: nowrap;
           pointer-events: none;
-          line-height: 1;
         }
 
-        /* ── Icon ─────────────────────────────────── */
         .ico {
           width: 48px;
           height: 48px;
@@ -419,19 +458,19 @@ class UltimateAjaxAlarmCard extends HTMLElement {
           <!-- CONTROL GRID -->
           <div class="grid">
 
-            <!-- Inschakelen — top left — label ABOVE icon -->
+            <!-- Inschakelen — top left — label boven icoon -->
             <button class="btn tl" id="btn-arm" aria-label="Inschakelen">
               <span class="lbl">Inschakelen</span>
               <div class="ico">${ICONS.btn_arm}</div>
             </button>
 
-            <!-- Uitschakelen — top right — label ABOVE icon -->
+            <!-- Uitschakelen — top right — label boven icoon -->
             <button class="btn tr" id="btn-disarm" aria-label="Uitschakelen">
               <span class="lbl">Uitschakelen</span>
               <div class="ico">${ICONS.btn_disarm}</div>
             </button>
 
-            <!-- Deelinschakeling — bottom full width — icon ABOVE label -->
+            <!-- Deelinschakeling — bottom full — icoon boven label -->
             <button class="btn bc" id="btn-night" aria-label="Deelinschakeling">
               <div class="ico">${ICONS.btn_night}</div>
               <span class="lbl">Deelinschakeling</span>
@@ -469,14 +508,17 @@ class UltimateAjaxAlarmCard extends HTMLElement {
     if (code !== undefined) data.code = code;
     try {
       await this._hass.callService('alarm_control_panel', map[action], data);
+      // After sending the command, poll immediately so the UI reflects the
+      // new state without waiting for the next scheduled poll.
+      setTimeout(() => this._pollState(), 1500);
     } catch(e) {
-      console.error('[UltimateAjaxAlarmCard] Service call error:', e);
+      console.error('[UltimateAjaxAlarmCard] Service error:', e);
     }
   }
 }
 
 
-// ─── GUI Config Editor ────────────────────────────────────────────────────────
+// ─── GUI Config Editor ─────────────────────────────────────────────────────────
 class UltimateAjaxAlarmCardEditor extends HTMLElement {
   constructor() { super(); this.attachShadow({mode:'open'}); this._c={}; }
   setConfig(c) { this._c={...c}; this._r(); }
@@ -487,13 +529,14 @@ class UltimateAjaxAlarmCardEditor extends HTMLElement {
         :host { display:block; padding:16px; }
         .row  { margin-bottom:16px; }
         label { display:block; font-size:12px; color:var(--secondary-text-color); margin-bottom:4px; }
-        input[type=text] {
+        input[type=text], input[type=number] {
           width:100%; padding:8px; box-sizing:border-box;
           border:1px solid var(--divider-color); border-radius:4px;
           background:var(--card-background-color); color:var(--primary-text-color); font-size:14px;
         }
         .tr { display:flex; align-items:center; gap:8px; }
         .tr label { margin:0; font-size:14px; color:var(--primary-text-color); }
+        small { display:block; margin-top:4px; font-size:11px; color:var(--secondary-text-color); }
       </style>
       <div class="row">
         <label>Entity (alarm_control_panel.*)</label>
@@ -502,6 +545,11 @@ class UltimateAjaxAlarmCardEditor extends HTMLElement {
       <div class="row">
         <label>Naam (optioneel)</label>
         <input type="text" id="name" value="${this._c.name||''}" placeholder="Laat leeg voor automatisch"/>
+      </div>
+      <div class="row">
+        <label>Poll interval (seconden)</label>
+        <input type="number" id="poll_interval" value="${this._c.poll_interval !== undefined ? this._c.poll_interval : 10}" min="0" max="300"/>
+        <small>De card vraagt elke X seconden actief de status op, zodat wijzigingen vanuit de Ajax app worden overgenomen. Stel 0 in om uit te schakelen.</small>
       </div>
       <div class="row tr">
         <input type="checkbox" id="code" ${this._c.code?'checked':''}/>
@@ -512,6 +560,9 @@ class UltimateAjaxAlarmCardEditor extends HTMLElement {
         this._c={...this._c,[f]:e.target.value}; this._fire();
       });
     });
+    this.shadowRoot.getElementById('poll_interval').addEventListener('change', e => {
+      this._c={...this._c, poll_interval: Number(e.target.value)}; this._fire();
+    });
     this.shadowRoot.getElementById('code').addEventListener('change', e => {
       this._c={...this._c,code:e.target.checked}; this._fire();
     });
@@ -519,7 +570,7 @@ class UltimateAjaxAlarmCardEditor extends HTMLElement {
 }
 
 
-// ─── Register ─────────────────────────────────────────────────────────────────
+// ─── Register ──────────────────────────────────────────────────────────────────
 customElements.define('ultimate-ajax-alarm-card',        UltimateAjaxAlarmCard);
 customElements.define('ultimate-ajax-alarm-card-editor', UltimateAjaxAlarmCardEditor);
 
