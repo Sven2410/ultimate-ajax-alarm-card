@@ -1,0 +1,27 @@
+{
+  "name": "ultimate-ajax-alarm-card",
+  "version": "1.0.0",
+  "description": "Home Assistant Lovelace card mimicking the Ajax Systems alarm app UI",
+  "main": "dist/ultimate-ajax-alarm-card.js",
+  "scripts": {
+    "build": "echo 'No build step required — pure JS' && exit 0",
+    "lint": "echo 'No linter configured'"
+  },
+  "keywords": [
+    "home-assistant",
+    "lovelace",
+    "custom-card",
+    "ajax-systems",
+    "alarm"
+  ],
+  "author": "Sven2410",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sven2410/ultimate-ajax-alarm-card.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Sven2410/ultimate-ajax-alarm-card/issues"
+  },
+  "homepage": "https://github.com/Sven2410/ultimate-ajax-alarm-card#readme"
+}

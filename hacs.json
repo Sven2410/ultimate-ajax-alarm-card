@@ -1,0 +1,7 @@
+{
+  "name": "Ultimate Ajax Systems Alarm Card",
+  "category": "plugin",
+  "render_readme": true,
+  "homeassistant": "2023.0.0",
+  "filename": "ultimate-ajax-alarm-card.js"
+}
