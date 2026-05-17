@@ -2,10 +2,10 @@
  * Ultimate Ajax Systems Alarm Card
  * Author: Sven2410
  * https://github.com/Sven2410/ultimate-ajax-alarm-card
- * License: MIT — v1.4.0
+ * License: MIT — v1.5.0
  */
 
-const CARD_VERSION = '1.4.0';
+const CARD_VERSION = '1.5.0';
 
 // ─── State config ─────────────────────────────────────────────────────────────
 const STATE_CONFIG = {
@@ -211,12 +211,13 @@ class UltimateAjaxAlarmCard extends HTMLElement {
     this._config    = null;
     this._state     = null;
     this._pollTimer = null;
+    this._unsub     = null;
   }
 
   static getConfigElement() { return document.createElement('ultimate-ajax-alarm-card-editor'); }
   static getStubConfig()    { return { entity:'alarm_control_panel.home', name:'', code:false, poll_interval:10 }; }
 
-  disconnectedCallback() { this._stopPoll(); }
+  disconnectedCallback() { this._stopPoll(); this._unsubscribe(); }
 
   setConfig(config) {
     if (!config.entity)
@@ -235,8 +236,10 @@ class UltimateAjaxAlarmCard extends HTMLElement {
 
   // ── HA pushes every entity state update here ──────────────────────────────
   set hass(hass) {
+    const first = !this._hass;
     this._hass = hass;
     if (!this._config) return;
+    if (first) this._subscribe();
     const obj   = hass.states[this._config.entity];
     const state = obj ? obj.state : 'unavailable';
     if (state !== this._state) {
@@ -265,20 +268,53 @@ class UltimateAjaxAlarmCard extends HTMLElement {
   async _forceUpdate() {
     if (!this._hass || !this._config) return;
     try {
-      // Step 1: tell HA to immediately refresh this entity from the integration
       await this._hass.callService('homeassistant', 'update_entity', {
         entity_id: this._config.entity,
       });
-      // Step 2: a short wait for the integration to respond, then read new state
-      await new Promise(r => setTimeout(r, 800));
+    } catch (e) {
+      // Some integrations don't support update_entity — continue to fetch state
+    }
+    await new Promise(r => setTimeout(r, 1500));
+    this._fetchState();
+  }
+
+  async _fetchState() {
+    if (!this._hass || !this._config) return;
+    try {
+      const result = await this._hass.callApi('GET', `states/${this._config.entity}`);
+      if (result && result.state !== this._state) {
+        this._state = result.state;
+        this._render(result.state);
+      }
+    } catch (e) {
       const obj   = this._hass.states[this._config.entity];
       const state = obj ? obj.state : 'unavailable';
       if (state !== this._state) {
         this._state = state;
         this._render(state);
       }
-    } catch (e) {
-      // Silently ignore — some integrations don't support update_entity
+    }
+  }
+
+  async _subscribe() {
+    if (this._unsub || !this._hass?.connection || !this._config) return;
+    try {
+      this._unsub = await this._hass.connection.subscribeEvents((ev) => {
+        if (ev.data.entity_id === this._config.entity) {
+          const ns = ev.data.new_state?.state || 'unavailable';
+          if (ns !== this._state) {
+            this._state = ns;
+            this._render(ns);
+          }
+        }
+      }, 'state_changed');
+    } catch (e) {}
+  }
+
+  _unsubscribe() {
+    if (this._unsub) {
+      if (typeof this._unsub === 'function') this._unsub();
+      this._unsub = null;
     }
   }
 
